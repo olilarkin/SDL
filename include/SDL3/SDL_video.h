@@ -1331,6 +1331,11 @@ extern SDL_DECLSPEC SDL_Window * SDLCALL SDL_CreatePopupWindow(SDL_Window *paren
  *   to wrap an existing window.
  * - `SDL_PROP_WINDOW_CREATE_COCOA_VIEW_POINTER`: the `(__unsafe_unretained)`
  *   NSView associated with the window, defaults to `[window contentView]`
+ * - `SDL_PROP_WINDOW_CREATE_COCOA_PARENT_VIEW_POINTER`: the
+ *   `(__unsafe_unretained)` NSView to use as a parent for embedding. When set,
+ *   SDL creates an SDL3View as a subview of this parent without creating an
+ *   NSWindow. Useful for audio plugin development where the host provides
+ *   only an NSView.
  *
  * These are additional supported properties on iOS, tvOS, and visionOS:
  *
@@ -1437,6 +1442,7 @@ extern SDL_DECLSPEC SDL_Window * SDLCALL SDL_CreateWindowWithProperties(SDL_Prop
 #define SDL_PROP_WINDOW_CREATE_Y_NUMBER                            "SDL.window.create.y"
 #define SDL_PROP_WINDOW_CREATE_COCOA_WINDOW_POINTER                "SDL.window.create.cocoa.window"
 #define SDL_PROP_WINDOW_CREATE_COCOA_VIEW_POINTER                  "SDL.window.create.cocoa.view"
+#define SDL_PROP_WINDOW_CREATE_COCOA_PARENT_VIEW_POINTER           "SDL.window.create.cocoa.parent_view"
 #define SDL_PROP_WINDOW_CREATE_WINDOWSCENE_POINTER                 "SDL.window.create.uikit.windowscene"
 #define SDL_PROP_WINDOW_CREATE_WAYLAND_SURFACE_ROLE_CUSTOM_BOOLEAN "SDL.window.create.wayland.surface_role_custom"
 #define SDL_PROP_WINDOW_CREATE_WAYLAND_CREATE_EGL_WINDOW_BOOLEAN   "SDL.window.create.wayland.create_egl_window"
@@ -1551,7 +1557,9 @@ extern SDL_DECLSPEC SDL_Window * SDLCALL SDL_GetWindowParent(SDL_Window *window)
  * On macOS:
  *
  * - `SDL_PROP_WINDOW_COCOA_WINDOW_POINTER`: the `(__unsafe_unretained)`
- *   NSWindow associated with the window
+ *   NSWindow associated with the window (may be NULL in embedded mode)
+ * - `SDL_PROP_WINDOW_COCOA_CONTENTVIEW_POINTER`: the `(__unsafe_unretained)`
+ *   NSView used for rendering (the SDL3View)
  * - `SDL_PROP_WINDOW_COCOA_METAL_VIEW_TAG_NUMBER`: the NSInteger tag
  *   associated with metal views on the window
  *
@@ -1642,6 +1650,7 @@ extern SDL_DECLSPEC SDL_PropertiesID SDLCALL SDL_GetWindowProperties(SDL_Window 
 #define SDL_PROP_WINDOW_KMSDRM_DRM_FD_NUMBER                        "SDL.window.kmsdrm.drm_fd"
 #define SDL_PROP_WINDOW_KMSDRM_GBM_DEVICE_POINTER                   "SDL.window.kmsdrm.gbm_dev"
 #define SDL_PROP_WINDOW_COCOA_WINDOW_POINTER                        "SDL.window.cocoa.window"
+#define SDL_PROP_WINDOW_COCOA_CONTENTVIEW_POINTER                   "SDL.window.cocoa.contentview"
 #define SDL_PROP_WINDOW_COCOA_METAL_VIEW_TAG_NUMBER                 "SDL.window.cocoa.metal_view_tag"
 #define SDL_PROP_WINDOW_OPENVR_OVERLAY_ID_NUMBER                    "SDL.window.openvr.overlay_id"
 #define SDL_PROP_WINDOW_VIVANTE_DISPLAY_POINTER                     "SDL.window.vivante.display"

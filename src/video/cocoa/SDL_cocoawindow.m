@@ -814,9 +814,9 @@ static NSCursor *Cocoa_GetDesiredCursor(void)
     NSView *view = data.sdlContentView;
 
     _data = data;
-    observingVisible = YES;
+    observingVisible = (window != nil);
     wasCtrlLeft = NO;
-    wasVisible = [window isVisible];
+    wasVisible = window ? [window isVisible] : NO;
     isFullscreenSpace = NO;
     inFullscreenTransition = NO;
     pendingWindowOperation = PENDING_OPERATION_NONE;
@@ -826,48 +826,51 @@ static NSCursor *Cocoa_GetDesiredCursor(void)
     pendingWindowWarpX = pendingWindowWarpY = FLT_MAX;
     liveResizeTimer = nil;
 
-    center = [NSNotificationCenter defaultCenter];
+    // Window-specific setup (skip in embedded mode when window is nil)
+    if (window) {
+        center = [NSNotificationCenter defaultCenter];
 
-    if ([window delegate] != nil) {
-        [center addObserver:self selector:@selector(windowDidExpose:) name:NSWindowDidExposeNotification object:window];
-        [center addObserver:self selector:@selector(windowDidChangeOcclusionState:) name:NSWindowDidChangeOcclusionStateNotification object:window];
-        [center addObserver:self selector:@selector(windowWillStartLiveResize:) name:NSWindowWillStartLiveResizeNotification object:window];
-        [center addObserver:self selector:@selector(windowDidEndLiveResize:) name:NSWindowDidEndLiveResizeNotification object:window];
-        [center addObserver:self selector:@selector(windowWillMove:) name:NSWindowWillMoveNotification object:window];
-        [center addObserver:self selector:@selector(windowDidMove:) name:NSWindowDidMoveNotification object:window];
-        [center addObserver:self selector:@selector(windowDidResize:) name:NSWindowDidResizeNotification object:window];
-        [center addObserver:self selector:@selector(windowWillMiniaturize:) name:NSWindowWillMiniaturizeNotification object:window];
-        [center addObserver:self selector:@selector(windowDidMiniaturize:) name:NSWindowDidMiniaturizeNotification object:window];
-        [center addObserver:self selector:@selector(windowDidDeminiaturize:) name:NSWindowDidDeminiaturizeNotification object:window];
-        [center addObserver:self selector:@selector(windowDidBecomeKey:) name:NSWindowDidBecomeKeyNotification object:window];
-        [center addObserver:self selector:@selector(windowDidResignKey:) name:NSWindowDidResignKeyNotification object:window];
-        [center addObserver:self selector:@selector(windowDidChangeBackingProperties:) name:NSWindowDidChangeBackingPropertiesNotification object:window];
-        [center addObserver:self selector:@selector(windowDidChangeScreenProfile:) name:NSWindowDidChangeScreenProfileNotification object:window];
-        [center addObserver:self selector:@selector(windowDidChangeScreen:) name:NSWindowDidChangeScreenNotification object:window];
-        [center addObserver:self selector:@selector(windowWillEnterFullScreen:) name:NSWindowWillEnterFullScreenNotification object:window];
-        [center addObserver:self selector:@selector(windowDidEnterFullScreen:) name:NSWindowDidEnterFullScreenNotification object:window];
-        [center addObserver:self selector:@selector(windowWillExitFullScreen:) name:NSWindowWillExitFullScreenNotification object:window];
-        [center addObserver:self selector:@selector(windowDidExitFullScreen:) name:NSWindowDidExitFullScreenNotification object:window];
-        [center addObserver:self selector:@selector(windowDidFailToEnterFullScreen:) name:@"NSWindowDidFailToEnterFullScreenNotification" object:window];
-        [center addObserver:self selector:@selector(windowDidFailToExitFullScreen:) name:@"NSWindowDidFailToExitFullScreenNotification" object:window];
-    } else {
-        [window setDelegate:self];
+        if ([window delegate] != nil) {
+            [center addObserver:self selector:@selector(windowDidExpose:) name:NSWindowDidExposeNotification object:window];
+            [center addObserver:self selector:@selector(windowDidChangeOcclusionState:) name:NSWindowDidChangeOcclusionStateNotification object:window];
+            [center addObserver:self selector:@selector(windowWillStartLiveResize:) name:NSWindowWillStartLiveResizeNotification object:window];
+            [center addObserver:self selector:@selector(windowDidEndLiveResize:) name:NSWindowDidEndLiveResizeNotification object:window];
+            [center addObserver:self selector:@selector(windowWillMove:) name:NSWindowWillMoveNotification object:window];
+            [center addObserver:self selector:@selector(windowDidMove:) name:NSWindowDidMoveNotification object:window];
+            [center addObserver:self selector:@selector(windowDidResize:) name:NSWindowDidResizeNotification object:window];
+            [center addObserver:self selector:@selector(windowWillMiniaturize:) name:NSWindowWillMiniaturizeNotification object:window];
+            [center addObserver:self selector:@selector(windowDidMiniaturize:) name:NSWindowDidMiniaturizeNotification object:window];
+            [center addObserver:self selector:@selector(windowDidDeminiaturize:) name:NSWindowDidDeminiaturizeNotification object:window];
+            [center addObserver:self selector:@selector(windowDidBecomeKey:) name:NSWindowDidBecomeKeyNotification object:window];
+            [center addObserver:self selector:@selector(windowDidResignKey:) name:NSWindowDidResignKeyNotification object:window];
+            [center addObserver:self selector:@selector(windowDidChangeBackingProperties:) name:NSWindowDidChangeBackingPropertiesNotification object:window];
+            [center addObserver:self selector:@selector(windowDidChangeScreenProfile:) name:NSWindowDidChangeScreenProfileNotification object:window];
+            [center addObserver:self selector:@selector(windowDidChangeScreen:) name:NSWindowDidChangeScreenNotification object:window];
+            [center addObserver:self selector:@selector(windowWillEnterFullScreen:) name:NSWindowWillEnterFullScreenNotification object:window];
+            [center addObserver:self selector:@selector(windowDidEnterFullScreen:) name:NSWindowDidEnterFullScreenNotification object:window];
+            [center addObserver:self selector:@selector(windowWillExitFullScreen:) name:NSWindowWillExitFullScreenNotification object:window];
+            [center addObserver:self selector:@selector(windowDidExitFullScreen:) name:NSWindowDidExitFullScreenNotification object:window];
+            [center addObserver:self selector:@selector(windowDidFailToEnterFullScreen:) name:@"NSWindowDidFailToEnterFullScreenNotification" object:window];
+            [center addObserver:self selector:@selector(windowDidFailToExitFullScreen:) name:@"NSWindowDidFailToExitFullScreenNotification" object:window];
+        } else {
+            [window setDelegate:self];
+        }
+
+        /* Haven't found a delegate / notification that triggers when the window is
+         * ordered out (is not visible any more). You can be ordered out without
+         * minimizing, so DidMiniaturize doesn't work. (e.g. -[NSWindow orderOut:])
+         */
+        [window addObserver:self
+                 forKeyPath:@"visible"
+                    options:NSKeyValueObservingOptionNew
+                    context:NULL];
+
+        [window setNextResponder:self];
+        [window setAcceptsMouseMovedEvents:YES];
     }
 
-    /* Haven't found a delegate / notification that triggers when the window is
-     * ordered out (is not visible any more). You can be ordered out without
-     * minimizing, so DidMiniaturize doesn't work. (e.g. -[NSWindow orderOut:])
-     */
-    [window addObserver:self
-             forKeyPath:@"visible"
-                options:NSKeyValueObservingOptionNew
-                context:NULL];
-
-    [window setNextResponder:self];
-    [window setAcceptsMouseMovedEvents:YES];
-
+    // View setup (needed for both windowed and embedded modes)
     [view setNextResponder:self];
-
     [view setAcceptsTouchEvents:YES];
 }
 
@@ -984,44 +987,48 @@ static NSCursor *Cocoa_GetDesiredCursor(void)
 
 - (void)close
 {
-    NSNotificationCenter *center;
     NSWindow *window = _data.nswindow;
-    NSView *view = [window contentView];
+    NSView *view = _data.sdlContentView;
 
-    center = [NSNotificationCenter defaultCenter];
+    // Window-specific cleanup (skip in embedded mode when window is nil)
+    if (window) {
+        NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
 
-    if ([window delegate] != self) {
-        [center removeObserver:self name:NSWindowDidExposeNotification object:window];
-        [center removeObserver:self name:NSWindowDidChangeOcclusionStateNotification object:window];
-        [center removeObserver:self name:NSWindowWillStartLiveResizeNotification object:window];
-        [center removeObserver:self name:NSWindowDidEndLiveResizeNotification object:window];
-        [center removeObserver:self name:NSWindowWillMoveNotification object:window];
-        [center removeObserver:self name:NSWindowDidMoveNotification object:window];
-        [center removeObserver:self name:NSWindowDidResizeNotification object:window];
-        [center removeObserver:self name:NSWindowWillMiniaturizeNotification object:window];
-        [center removeObserver:self name:NSWindowDidMiniaturizeNotification object:window];
-        [center removeObserver:self name:NSWindowDidDeminiaturizeNotification object:window];
-        [center removeObserver:self name:NSWindowDidBecomeKeyNotification object:window];
-        [center removeObserver:self name:NSWindowDidResignKeyNotification object:window];
-        [center removeObserver:self name:NSWindowDidChangeBackingPropertiesNotification object:window];
-        [center removeObserver:self name:NSWindowDidChangeScreenProfileNotification object:window];
-        [center removeObserver:self name:NSWindowDidChangeScreenNotification object:window];
-        [center removeObserver:self name:NSWindowWillEnterFullScreenNotification object:window];
-        [center removeObserver:self name:NSWindowDidEnterFullScreenNotification object:window];
-        [center removeObserver:self name:NSWindowWillExitFullScreenNotification object:window];
-        [center removeObserver:self name:NSWindowDidExitFullScreenNotification object:window];
-        [center removeObserver:self name:@"NSWindowDidFailToEnterFullScreenNotification" object:window];
-        [center removeObserver:self name:@"NSWindowDidFailToExitFullScreenNotification" object:window];
-    } else {
-        [window setDelegate:nil];
+        if ([window delegate] != self) {
+            [center removeObserver:self name:NSWindowDidExposeNotification object:window];
+            [center removeObserver:self name:NSWindowDidChangeOcclusionStateNotification object:window];
+            [center removeObserver:self name:NSWindowWillStartLiveResizeNotification object:window];
+            [center removeObserver:self name:NSWindowDidEndLiveResizeNotification object:window];
+            [center removeObserver:self name:NSWindowWillMoveNotification object:window];
+            [center removeObserver:self name:NSWindowDidMoveNotification object:window];
+            [center removeObserver:self name:NSWindowDidResizeNotification object:window];
+            [center removeObserver:self name:NSWindowWillMiniaturizeNotification object:window];
+            [center removeObserver:self name:NSWindowDidMiniaturizeNotification object:window];
+            [center removeObserver:self name:NSWindowDidDeminiaturizeNotification object:window];
+            [center removeObserver:self name:NSWindowDidBecomeKeyNotification object:window];
+            [center removeObserver:self name:NSWindowDidResignKeyNotification object:window];
+            [center removeObserver:self name:NSWindowDidChangeBackingPropertiesNotification object:window];
+            [center removeObserver:self name:NSWindowDidChangeScreenProfileNotification object:window];
+            [center removeObserver:self name:NSWindowDidChangeScreenNotification object:window];
+            [center removeObserver:self name:NSWindowWillEnterFullScreenNotification object:window];
+            [center removeObserver:self name:NSWindowDidEnterFullScreenNotification object:window];
+            [center removeObserver:self name:NSWindowWillExitFullScreenNotification object:window];
+            [center removeObserver:self name:NSWindowDidExitFullScreenNotification object:window];
+            [center removeObserver:self name:@"NSWindowDidFailToEnterFullScreenNotification" object:window];
+            [center removeObserver:self name:@"NSWindowDidFailToExitFullScreenNotification" object:window];
+        } else {
+            [window setDelegate:nil];
+        }
+
+        [window removeObserver:self forKeyPath:@"visible"];
+
+        if ([window nextResponder] == self) {
+            [window setNextResponder:nil];
+        }
     }
 
-    [window removeObserver:self forKeyPath:@"visible"];
-
-    if ([window nextResponder] == self) {
-        [window setNextResponder:nil];
-    }
-    if ([view nextResponder] == self) {
+    // View cleanup (needed for both windowed and embedded modes)
+    if (view && [view nextResponder] == self) {
         [view setNextResponder:nil];
     }
 }
@@ -1727,7 +1734,9 @@ static void Cocoa_SendMouseButtonClicks(SDL_Mouse *mouse, NSEvent *theEvent, SDL
     } else {
         const float orig_x = mouse->x;
         const float orig_y = mouse->y;
-        const NSPoint point = [theEvent locationInWindow];
+        // Convert from window coordinates to view coordinates (essential for embedded mode)
+        SDL_CocoaWindowData *data = (__bridge SDL_CocoaWindowData *)window->internal;
+        const NSPoint point = [data.sdlContentView convertPoint:[theEvent locationInWindow] fromView:nil];
         mouse->x = (int)point.x;
         mouse->y = (int)(window->h - point.y);
         //SDL_SendMouseButtonClicks(Cocoa_GetEventTimestamp([theEvent timestamp]), window, mouseID, button, down, clicks);
@@ -1874,9 +1883,10 @@ static void Cocoa_SendMouseButtonClicks(SDL_Mouse *mouse, NSEvent *theEvent, SDL
 
     window = _data.window;
     contentView = _data.sdlContentView;
-    point = [theEvent locationInWindow];
+    // Convert from window coordinates to view coordinates (essential for embedded mode)
+    point = [contentView convertPoint:[theEvent locationInWindow] fromView:nil];
 
-    if ([contentView mouse:[contentView convertPoint:point fromView:nil] inRect:[contentView bounds]] &&
+    if ([contentView mouse:point inRect:[contentView bounds]] &&
         [NSCursor currentCursor] != Cocoa_GetDesiredCursor()) {
         // The wrong cursor is on screen, fix it. This fixes an macOS bug that is only known to
         // occur in fullscreen windows on the built-in displays of newer MacBooks with camera
@@ -2278,9 +2288,15 @@ static bool SetupWindowData(SDL_VideoDevice *_this, SDL_Window *window, NSWindow
         data.window = window;
         data.nswindow = nswindow;
         data.videodata = videodata;
-        data.window_number = nswindow.windowNumber;
+        data.embedded = (nswindow == nil);  // Track embedded mode
         data.nscontexts = [[NSMutableArray alloc] init];
         data.sdlContentView = nsview;
+
+        if (nswindow) {
+            data.window_number = nswindow.windowNumber;
+        } else {
+            data.window_number = 0;
+        }
 
         data.viewport = [data.sdlContentView bounds];
         if (window->flags & SDL_WINDOW_HIGH_PIXEL_DENSITY) {
@@ -2288,11 +2304,11 @@ static bool SetupWindowData(SDL_VideoDevice *_this, SDL_Window *window, NSWindow
             data.viewport = [data.sdlContentView convertRectToBacking:data.viewport];
         }
 
-        // Create an event listener for the window
+        // Create an event listener (needed for both windowed and embedded modes)
         data.listener = [[SDL3Cocoa_WindowListener alloc] init];
 
-        // Fill in the SDL window with the window data
-        {
+        // Fill in the SDL window with the window data (only if we have a window)
+        if (nswindow) {
             int x, y;
             NSRect rect = [nswindow contentRectForFrameRect:[nswindow frame]];
             ConvertNSRect(&rect);
@@ -2302,17 +2318,25 @@ static bool SetupWindowData(SDL_VideoDevice *_this, SDL_Window *window, NSWindow
             window->w = (int)rect.size.width;
             window->h = (int)rect.size.height;
         }
+        // For embedded mode, w/h are already set from creation params
 
         // Set up the listener after we create the view
-        [data.listener listen:data];
+        if (data.listener) {
+            [data.listener listen:data];
+        }
 
-        if ([nswindow isVisible]) {
-            window->flags &= ~SDL_WINDOW_HIDDEN;
+        if (nswindow) {
+            if ([nswindow isVisible]) {
+                window->flags &= ~SDL_WINDOW_HIDDEN;
+            } else {
+                window->flags |= SDL_WINDOW_HIDDEN;
+            }
         } else {
+            // In embedded mode, visibility is controlled by host
             window->flags |= SDL_WINDOW_HIDDEN;
         }
 
-        {
+        if (nswindow) {
             unsigned long style = [nswindow styleMask];
 
             /* NSWindowStyleMaskBorderless is zero, and it's possible to be
@@ -2328,80 +2352,89 @@ static bool SetupWindowData(SDL_VideoDevice *_this, SDL_Window *window, NSWindow
             } else {
                 window->flags &= ~SDL_WINDOW_RESIZABLE;
             }
-        }
 
-        // isZoomed always returns true if the window is not resizable
-        if ((window->flags & SDL_WINDOW_RESIZABLE) && [nswindow isZoomed]) {
-            window->flags |= SDL_WINDOW_MAXIMIZED;
+            // isZoomed always returns true if the window is not resizable
+            if ((window->flags & SDL_WINDOW_RESIZABLE) && [nswindow isZoomed]) {
+                window->flags |= SDL_WINDOW_MAXIMIZED;
+            } else {
+                window->flags &= ~SDL_WINDOW_MAXIMIZED;
+            }
+
+            if ([nswindow isMiniaturized]) {
+                window->flags |= SDL_WINDOW_MINIMIZED;
+            } else {
+                window->flags &= ~SDL_WINDOW_MINIMIZED;
+            }
+
+            if (window->parent) {
+                NSWindow *nsparent = ((__bridge SDL_CocoaWindowData *)window->parent->internal).nswindow;
+                [nsparent addChildWindow:nswindow ordered:NSWindowAbove];
+
+                /* FIXME: Should not need to call addChildWindow then orderOut.
+                   Attaching a hidden child window to a hidden parent window will cause the child window
+                   to show when the parent does. We therefore shouldn't attach the child window here as we're
+                   going to do so when the child window is explicitly shown later but skipping the addChildWindow
+                   entirely causes the child window to not get key focus correctly the first time it's shown. Adding
+                   then immediately ordering out (removing) the window does work. */
+                if (window->flags & SDL_WINDOW_HIDDEN) {
+                    [nswindow orderOut:nil];
+                }
+            }
+
+            if (!SDL_WINDOW_IS_POPUP(window)) {
+                if ([nswindow isKeyWindow]) {
+                    window->flags |= SDL_WINDOW_INPUT_FOCUS;
+                    Cocoa_SetKeyboardFocus(data.window, true);
+                }
+            } else {
+                if (window->flags & SDL_WINDOW_TOOLTIP) {
+                    [nswindow setIgnoresMouseEvents:YES];
+                    [nswindow setAcceptsMouseMovedEvents:NO];
+                } else if ((window->flags & SDL_WINDOW_POPUP_MENU) && !(window->flags & SDL_WINDOW_HIDDEN)) {
+                    if (!(window->flags & SDL_WINDOW_NOT_FOCUSABLE)) {
+                        Cocoa_SetKeyboardFocus(window, true);
+                    }
+                    Cocoa_UpdateMouseFocus();
+                }
+            }
+
+            if (nswindow.isOpaque) {
+                window->flags &= ~SDL_WINDOW_TRANSPARENT;
+            } else {
+                window->flags |= SDL_WINDOW_TRANSPARENT;
+            }
+
+            /* SDL_CocoaWindowData will be holding a strong reference to the NSWindow, and
+             * it will also call [NSWindow close] in DestroyWindow before releasing the
+             * NSWindow, so the extra release provided by releasedWhenClosed isn't
+             * necessary. */
+            nswindow.releasedWhenClosed = NO;
+
+            /* Prevents the window's "window device" from being destroyed when it is
+             * hidden. See http://www.mikeash.com/pyblog/nsopenglcontext-and-one-shot.html
+             */
+            [nswindow setOneShot:NO];
+
+            if (window->flags & SDL_WINDOW_EXTERNAL) {
+                // Query the title from the existing window
+                NSString *title = [nswindow title];
+                if (title) {
+                    window->title = SDL_strdup([title UTF8String]);
+                }
+            }
         } else {
+            // Embedded mode defaults
+            window->flags |= SDL_WINDOW_BORDERLESS;
+            window->flags &= ~SDL_WINDOW_RESIZABLE;
             window->flags &= ~SDL_WINDOW_MAXIMIZED;
-        }
-
-        if ([nswindow isMiniaturized]) {
-            window->flags |= SDL_WINDOW_MINIMIZED;
-        } else {
             window->flags &= ~SDL_WINDOW_MINIMIZED;
         }
 
-        if (window->parent) {
-            NSWindow *nsparent = ((__bridge SDL_CocoaWindowData *)window->parent->internal).nswindow;
-            [nsparent addChildWindow:nswindow ordered:NSWindowAbove];
-
-            /* FIXME: Should not need to call addChildWindow then orderOut.
-               Attaching a hidden child window to a hidden parent window will cause the child window
-               to show when the parent does. We therefore shouldn't attach the child window here as we're
-               going to do so when the child window is explicitly shown later but skipping the addChildWindow
-               entirely causes the child window to not get key focus correctly the first time it's shown. Adding
-               then immediately ordering out (removing) the window does work. */
-            if (window->flags & SDL_WINDOW_HIDDEN) {
-                [nswindow orderOut:nil];
-            }
-        }
-
-        if (!SDL_WINDOW_IS_POPUP(window)) {
-            if ([nswindow isKeyWindow]) {
-                window->flags |= SDL_WINDOW_INPUT_FOCUS;
-                Cocoa_SetKeyboardFocus(data.window, true);
-            }
-        } else {
-            if (window->flags & SDL_WINDOW_TOOLTIP) {
-                [nswindow setIgnoresMouseEvents:YES];
-                [nswindow setAcceptsMouseMovedEvents:NO];
-            } else if ((window->flags & SDL_WINDOW_POPUP_MENU) && !(window->flags & SDL_WINDOW_HIDDEN)) {
-                if (!(window->flags & SDL_WINDOW_NOT_FOCUSABLE)) {
-                	Cocoa_SetKeyboardFocus(window, true);
-                }
-                Cocoa_UpdateMouseFocus();
-            }
-        }
-
-        if (nswindow.isOpaque) {
-            window->flags &= ~SDL_WINDOW_TRANSPARENT;
-        } else {
-            window->flags |= SDL_WINDOW_TRANSPARENT;
-        }
-
-        /* SDL_CocoaWindowData will be holding a strong reference to the NSWindow, and
-         * it will also call [NSWindow close] in DestroyWindow before releasing the
-         * NSWindow, so the extra release provided by releasedWhenClosed isn't
-         * necessary. */
-        nswindow.releasedWhenClosed = NO;
-
-        /* Prevents the window's "window device" from being destroyed when it is
-         * hidden. See http://www.mikeash.com/pyblog/nsopenglcontext-and-one-shot.html
-         */
-        [nswindow setOneShot:NO];
-
-        if (window->flags & SDL_WINDOW_EXTERNAL) {
-            // Query the title from the existing window
-            NSString *title = [nswindow title];
-            if (title) {
-                window->title = SDL_strdup([title UTF8String]);
-            }
-        }
-
         SDL_PropertiesID props = SDL_GetWindowProperties(window);
-        SDL_SetPointerProperty(props, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, (__bridge void *)data.nswindow);
+        if (nswindow) {
+            SDL_SetPointerProperty(props, SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, (__bridge void *)data.nswindow);
+        }
+        SDL_SetPointerProperty(props, SDL_PROP_WINDOW_COCOA_CONTENTVIEW_POINTER, (__bridge void *)data.sdlContentView);
         SDL_SetNumberProperty(props, SDL_PROP_WINDOW_COCOA_METAL_VIEW_TAG_NUMBER, SDL_METALVIEW_TAG);
 
         // All done!
@@ -2429,15 +2462,28 @@ bool Cocoa_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Properti
             nswindow = (__bridge NSWindow *)SDL_GetPointerProperty(create_props, SDL_PROP_WINDOW_CREATE_COCOA_WINDOW_POINTER, NULL);
             nsview = (__bridge NSView *)SDL_GetPointerProperty(create_props, SDL_PROP_WINDOW_CREATE_COCOA_VIEW_POINTER, NULL);
         }
-        if (nswindow && !nsview) {
+
+        // Check for parent view mode (plugin embedding) - creates view without NSWindow
+        NSView *parentView = (__bridge NSView *)SDL_GetPointerProperty(create_props, SDL_PROP_WINDOW_CREATE_COCOA_PARENT_VIEW_POINTER, NULL);
+        if (parentView) {
+            // Create SDL3View and add as subview to parent - no NSWindow needed
+            NSRect frame = NSMakeRect(0, 0, window->w, window->h);
+            SDL3View *contentView = [[SDL3View alloc] initWithFrame:frame];
+            [contentView setSDLWindow:window];
+            [parentView addSubview:contentView];
+
+            nswindow = nil;  // No NSWindow in embedded mode
+            nsview = contentView;
+            window->flags |= SDL_WINDOW_EXTERNAL;
+        } else if (nswindow && !nsview) {
             nsview = [nswindow contentView];
         }
-        if (nsview && !nswindow) {
+        if (nsview && !nswindow && !parentView) {
             nswindow = [nsview window];
         }
         if (nswindow) {
             window->flags |= SDL_WINDOW_EXTERNAL;
-        } else {
+        } else if (!parentView) {
             int x, y;
             NSScreen *screen;
             NSRect rect, screenRect;
@@ -2497,14 +2543,17 @@ bool Cocoa_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Properti
             nsview = contentView;
         }
 
-        if (window->flags & SDL_WINDOW_ALWAYS_ON_TOP) {
-            [nswindow setLevel:NSFloatingWindowLevel];
-        }
+        // NSWindow-specific setup (skip in embedded mode)
+        if (nswindow) {
+            if (window->flags & SDL_WINDOW_ALWAYS_ON_TOP) {
+                [nswindow setLevel:NSFloatingWindowLevel];
+            }
 
-        if (window->flags & SDL_WINDOW_TRANSPARENT) {
-            nswindow.opaque = NO;
-            nswindow.hasShadow = NO;
-            nswindow.backgroundColor = [NSColor clearColor];
+            if (window->flags & SDL_WINDOW_TRANSPARENT) {
+                nswindow.opaque = NO;
+                nswindow.hasShadow = NO;
+                nswindow.backgroundColor = [NSColor clearColor];
+            }
         }
 
 // We still support OpenGL as long as Apple offers it, deprecated or not, so disable deprecation warnings about it.
@@ -2525,7 +2574,7 @@ bool Cocoa_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Properti
         if ((window->flags & SDL_WINDOW_OPENGL) &&
             _this->gl_config.profile_mask == SDL_GL_CONTEXT_PROFILE_ES) {
             [nsview setWantsLayer:TRUE];
-            if ((window->flags & SDL_WINDOW_HIGH_PIXEL_DENSITY)) {
+            if ((window->flags & SDL_WINDOW_HIGH_PIXEL_DENSITY) && nswindow) {
                 nsview.layer.contentsScale = nswindow.screen.backingScaleFactor;
             } else {
                 nsview.layer.contentsScale = 1;
@@ -2533,7 +2582,9 @@ bool Cocoa_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Properti
         }
 #endif // SDL_VIDEO_OPENGL_EGL
 #endif // SDL_VIDEO_OPENGL_ES2
-        [nswindow setContentView:nsview];
+        if (nswindow) {
+            [nswindow setContentView:nsview];
+        }
 
         if (!SetupWindowData(_this, window, nswindow, nsview)) {
             return false;
@@ -3230,16 +3281,21 @@ void Cocoa_DestroyWindow(SDL_VideoDevice *_this, SDL_Window *window)
                 topmost->keyboard_focus = new_focus;
             }
 
-            if ([data.listener isInFullscreenSpace]) {
-                [NSMenu setMenuBarVisible:YES];
+            if (data.listener) {
+                if ([data.listener isInFullscreenSpace]) {
+                    [NSMenu setMenuBarVisible:YES];
+                }
+                [data.listener close];
+                data.listener = nil;
             }
-            [data.listener close];
-            data.listener = nil;
 
             if (!(window->flags & SDL_WINDOW_EXTERNAL)) {
                 // Release the content view to avoid further updateLayer callbacks
                 [data.nswindow setContentView:nil];
                 [data.nswindow close];
+            } else if (data.embedded) {
+                // In embedded mode, remove the view from its parent
+                [data.sdlContentView removeFromSuperview];
             }
 
 #ifdef SDL_VIDEO_OPENGL

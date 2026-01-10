@@ -155,6 +155,7 @@ typedef enum
 @property(nonatomic) bool pending_position;
 @property(nonatomic) bool border_toggled;
 @property(nonatomic) bool has_modal_dialog;
+@property(nonatomic) bool embedded;  // True if view-only mode (no NSWindow)
 
 #ifdef SDL_VIDEO_OPENGL_EGL
 @property(nonatomic) EGLSurface egl_surface;
