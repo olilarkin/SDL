@@ -562,10 +562,21 @@ static bool Cocoa_ShowCursor(SDL_Cursor *cursor)
             SDL_CocoaWindowData *data = (__bridge SDL_CocoaWindowData *)window->internal;
             if (data) {
                 NSWindow *nsWindow = data.nswindow;
+                NSView *cursorView = nil;
 
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    [nsWindow invalidateCursorRectsForView: [nsWindow contentView]];
-                });
+                if (data.embedded && data.sdlContentView) {
+                    // In embedded mode, get the host window and invalidate cursor rects for our view
+                    cursorView = data.sdlContentView;
+                    nsWindow = [cursorView window];
+                } else if (nsWindow) {
+                    cursorView = [nsWindow contentView];
+                }
+
+                if (nsWindow && cursorView) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        [nsWindow invalidateCursorRectsForView:cursorView];
+                    });
+                }
             }
         }
         return true;
@@ -629,6 +640,28 @@ static bool Cocoa_WarpMouseGlobal(float x, float y)
 
 static bool Cocoa_WarpMouse(SDL_Window *window, float x, float y)
 {
+    SDL_CocoaWindowData *data = (__bridge SDL_CocoaWindowData *)window->internal;
+
+    // In embedded mode (no NSWindow), we need to convert view-local coordinates
+    // to global screen coordinates using the view's actual position
+    if (data && data.embedded && data.sdlContentView) {
+        NSView *view = data.sdlContentView;
+        // Convert from view coordinates (origin bottom-left) to window coordinates
+        NSPoint viewPoint = NSMakePoint(x, y);
+        NSPoint windowPoint = [view convertPoint:viewPoint toView:nil];
+
+        // Get the window that contains our view (the host window)
+        NSWindow *hostWindow = [view window];
+        if (hostWindow) {
+            // Convert from window coordinates to screen coordinates
+            NSRect screenRect = [hostWindow convertRectToScreen:NSMakeRect(windowPoint.x, windowPoint.y, 0, 0)];
+            // Flip Y coordinate (Cocoa uses bottom-left origin, CGWarp uses top-left)
+            CGFloat screenHeight = CGDisplayBounds(CGMainDisplayID()).size.height;
+            return Cocoa_WarpMouseGlobal((float)screenRect.origin.x, (float)(screenHeight - screenRect.origin.y));
+        }
+    }
+
+    // Standard windowed mode
     return Cocoa_WarpMouseGlobal(window->x + x, window->y + y);
 }
 
