@@ -2198,6 +2198,25 @@ static void Cocoa_SendMouseButtonClicks(SDL_Mouse *mouse, NSEvent *theEvent, SDL
     Cocoa_HandleKeyEvent(SDL_GetVideoDevice(), theEvent);
 }
 
+/* Embedded (parent-view) windows: the host resizes this view directly (a
+   frame set from the plugin bridge, or the Cocoa autoresizing mask during a
+   live window drag) — there is no NSWindow, so windowDidResize never fires
+   and SDL's cached window->w/h goes stale. Every mouse handler y-flips with
+   window->h, so stale height = clicks offset by the size delta after any
+   resize. Mirror frame changes into SDL here (non-embedded windows keep the
+   windowDidResize path; SDL drops same-size resize events). */
+- (void)setFrameSize:(NSSize)newSize
+{
+    [super setFrameSize:newSize];
+    if (_sdlWindow) {
+        SDL_CocoaWindowData *data = (__bridge SDL_CocoaWindowData *)_sdlWindow->internal;
+        if (data && data.nswindow == nil) {
+            SDL_SendWindowEvent(_sdlWindow, SDL_EVENT_WINDOW_RESIZED,
+                                (int)newSize.width, (int)newSize.height);
+        }
+    }
+}
+
 /* this is used on older macOS revisions, and newer ones which emulate old
    NSOpenGLContext behaviour while still using a layer under the hood. 10.8 and
    later use updateLayer, up until 10.14.2 or so, which uses drawRect without
