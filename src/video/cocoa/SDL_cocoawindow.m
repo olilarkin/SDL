@@ -2155,6 +2155,49 @@ static void Cocoa_SendMouseButtonClicks(SDL_Mouse *mouse, NSEvent *theEvent, SDL
     _sdlWindow = window;
 }
 
+/* Embedded (parent-view) windows: the host app owns the NSWindow and the
+   event loop, so SDL's app-level key interception never sees key events.
+   Accept first-responder status (claimed on click below), feed key events
+   into SDL directly, and mirror responder status into SDL's keyboard focus
+   so the events route to this window. Duplicate deliveries in non-embedded
+   mode are harmless: SDL_SendKeyboardKey filters repeats. */
+- (BOOL)acceptsFirstResponder
+{
+    return YES;
+}
+- (BOOL)becomeFirstResponder
+{
+    if (_sdlWindow) {
+        SDL_SetKeyboardFocus(_sdlWindow);
+    }
+    return [super becomeFirstResponder];
+}
+- (BOOL)resignFirstResponder
+{
+    if (_sdlWindow && SDL_GetKeyboardFocus() == _sdlWindow) {
+        SDL_SetKeyboardFocus(NULL);
+    }
+    return [super resignFirstResponder];
+}
+- (void)mouseDown:(NSEvent *)theEvent
+{
+    /* Plain NSViews don't take first-responder status on click by themselves */
+    [[self window] makeFirstResponder:self];
+    [super mouseDown:theEvent]; /* continue to SDL's listener in the chain */
+}
+- (void)keyDown:(NSEvent *)theEvent
+{
+    Cocoa_HandleKeyEvent(SDL_GetVideoDevice(), theEvent);
+}
+- (void)keyUp:(NSEvent *)theEvent
+{
+    Cocoa_HandleKeyEvent(SDL_GetVideoDevice(), theEvent);
+}
+- (void)flagsChanged:(NSEvent *)theEvent
+{
+    Cocoa_HandleKeyEvent(SDL_GetVideoDevice(), theEvent);
+}
+
 /* this is used on older macOS revisions, and newer ones which emulate old
    NSOpenGLContext behaviour while still using a layer under the hood. 10.8 and
    later use updateLayer, up until 10.14.2 or so, which uses drawRect without
@@ -2759,7 +2802,10 @@ void Cocoa_SetWindowAspectRatio(SDL_VideoDevice *_this, SDL_Window *window)
             SDL_CalculateFraction(window->max_aspect, &numerator, &denominator);
             [windata.nswindow setContentAspectRatio:NSMakeSize(numerator, denominator)];
         } else {
-            [windata.nswindow setContentAspectRatio:NSMakeSize(0, 0)];
+            // Clear aspect ratio by switching to resize increments.
+            // setContentAspectRatio:NSMakeSize(0, 0) causes AppKit assertion
+            // failures in _adjustNeedsDisplayRegionForNewFrame: on macOS 15+
+            [windata.nswindow setContentResizeIncrements:NSMakeSize(1, 1)];
         }
     }
 }
