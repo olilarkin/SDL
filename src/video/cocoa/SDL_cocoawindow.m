@@ -2299,7 +2299,17 @@ static void Cocoa_SendMouseButtonClicks(SDL_Mouse *mouse, NSEvent *theEvent, SDL
     if (_trackingArea) {
         [self removeTrackingArea:_trackingArea];
     }
-    _trackingArea = [[NSTrackingArea alloc] initWithRect:[self bounds] options:NSTrackingMouseEnteredAndExited|NSTrackingActiveAlways owner:windata.listener userInfo:nil];
+    // Embedded child views (a plugin editor hosted inside a DAW's NSWindow) never
+    // get the window-level -setAcceptsMouseMovedEvents:YES that drives hover
+    // motion (that's only set on SDL's own windows), so the view would receive
+    // button-drags but no plain hover moves. Ask the tracking area itself for
+    // MouseMoved in that case. Non-embedded keeps the old path (its window
+    // already posts moved events; adding them here would double-deliver).
+    NSTrackingAreaOptions trackingOpts = NSTrackingMouseEnteredAndExited | NSTrackingActiveAlways;
+    if (windata.embedded) {
+        trackingOpts |= NSTrackingMouseMoved;
+    }
+    _trackingArea = [[NSTrackingArea alloc] initWithRect:[self bounds] options:trackingOpts owner:windata.listener userInfo:nil];
     [self addTrackingArea:_trackingArea];
 }
 @end
