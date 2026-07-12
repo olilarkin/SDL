@@ -115,6 +115,23 @@ extern int SDL_AppleTVRemoteOpenedAsJoystick;
     return self;
 }
 
+// Embedded (parent-view) windows have no UIWindow/view controller, so nothing
+// updates SDL's cached window->w/h when the host resizes the view — and
+// touch->mouse synthesis scales normalized touch coords by window->w/h, so
+// touches land in a stale coordinate space and miss everything. Mirror frame
+// changes into SDL, like the Cocoa embedded setFrameSize: patch.
+- (void)setFrame:(CGRect)frame
+{
+    [super setFrame:frame];
+    if (sdlwindow) {
+        SDL_UIKitWindowData *data = (__bridge SDL_UIKitWindowData *)sdlwindow->internal;
+        if (data && data.uiwindow == nil) {
+            SDL_SendWindowEvent(sdlwindow, SDL_EVENT_WINDOW_RESIZED,
+                                (int)frame.size.width, (int)frame.size.height);
+        }
+    }
+}
+
 - (void)setSDLWindow:(SDL_Window *)window
 {
     SDL_UIKitWindowData *data = nil;
