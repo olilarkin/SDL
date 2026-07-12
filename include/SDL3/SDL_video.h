@@ -1342,6 +1342,11 @@ extern SDL_DECLSPEC SDL_Window * SDLCALL SDL_CreatePopupWindow(SDL_Window *paren
  * - `SDL_PROP_WINDOW_CREATE_WINDOWSCENE_POINTER`: the `(__unsafe_unretained)`
  *   UIWindowScene associated with the window, defaults to the active window
  *   scene.
+ * - `SDL_PROP_WINDOW_CREATE_UIKIT_PARENT_VIEW_POINTER`: the
+ *   `(__unsafe_unretained)` UIView to use as a parent for embedding. When set,
+ *   SDL creates a metal-backed SDL view as a subview of this parent without
+ *   creating a UIWindow. Useful for audio plugin development where the host
+ *   provides only a UIView.
  *
  * These are additional supported properties on Wayland:
  *
@@ -1444,6 +1449,7 @@ extern SDL_DECLSPEC SDL_Window * SDLCALL SDL_CreateWindowWithProperties(SDL_Prop
 #define SDL_PROP_WINDOW_CREATE_COCOA_VIEW_POINTER                  "SDL.window.create.cocoa.view"
 #define SDL_PROP_WINDOW_CREATE_COCOA_PARENT_VIEW_POINTER           "SDL.window.create.cocoa.parent_view"
 #define SDL_PROP_WINDOW_CREATE_WINDOWSCENE_POINTER                 "SDL.window.create.uikit.windowscene"
+#define SDL_PROP_WINDOW_CREATE_UIKIT_PARENT_VIEW_POINTER           "SDL.window.create.uikit.parent_view"
 #define SDL_PROP_WINDOW_CREATE_WAYLAND_SURFACE_ROLE_CUSTOM_BOOLEAN "SDL.window.create.wayland.surface_role_custom"
 #define SDL_PROP_WINDOW_CREATE_WAYLAND_CREATE_EGL_WINDOW_BOOLEAN   "SDL.window.create.wayland.create_egl_window"
 #define SDL_PROP_WINDOW_CREATE_WAYLAND_WL_SURFACE_POINTER          "SDL.window.create.wayland.wl_surface"
@@ -1642,6 +1648,7 @@ extern SDL_DECLSPEC SDL_PropertiesID SDLCALL SDL_GetWindowProperties(SDL_Window 
 #define SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER                      "SDL.window.android.window"
 #define SDL_PROP_WINDOW_ANDROID_SURFACE_POINTER                     "SDL.window.android.surface"
 #define SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER                        "SDL.window.uikit.window"
+#define SDL_PROP_WINDOW_UIKIT_CONTENTVIEW_POINTER                   "SDL.window.uikit.contentview"
 #define SDL_PROP_WINDOW_UIKIT_METAL_VIEW_TAG_NUMBER                 "SDL.window.uikit.metal_view_tag"
 #define SDL_PROP_WINDOW_UIKIT_OPENGL_FRAMEBUFFER_NUMBER             "SDL.window.uikit.opengl.framebuffer"
 #define SDL_PROP_WINDOW_UIKIT_OPENGL_RENDERBUFFER_NUMBER            "SDL.window.uikit.opengl.renderbuffer"

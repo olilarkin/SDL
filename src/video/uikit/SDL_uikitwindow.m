@@ -33,6 +33,9 @@
 #include "SDL_uikitappdelegate.h"
 #include "SDL_uikitview.h"
 #include "SDL_uikitopenglview.h"
+#ifdef SDL_VIDEO_METAL
+#import "SDL_uikitmetalview.h"
+#endif
 
 #include <Foundation/Foundation.h>
 
@@ -126,6 +129,52 @@ static bool SetupWindowData(SDL_VideoDevice *_this, SDL_Window *window, UIWindow
     return true;
 }
 
+// Parent-view (plugin embedding) mode: create an SDL view inside a
+// host-provided UIView with no UIWindow or view controller of our own.
+// Mirrors the Cocoa SDL_PROP_WINDOW_CREATE_COCOA_PARENT_VIEW_POINTER path.
+static bool SetupWindowDataEmbedded(SDL_VideoDevice *_this, SDL_Window *window, UIView *parentView)
+{
+    SDL_UIKitWindowData *data = [[SDL_UIKitWindowData alloc] init];
+    if (!data) {
+        return SDL_OutOfMemory();
+    }
+
+    window->internal = (SDL_WindowData *)CFBridgingRetain(data);
+    data.uiwindow = nil; // embedded: no UIWindow, no view controller
+
+    CGRect frame = CGRectMake(0, 0, window->w, window->h);
+    SDL_uikitview *view;
+#ifdef SDL_VIDEO_METAL
+    // Metal-backed so a WebGPU/Metal surface can use the view's own layer
+    // (UIView layers are fixed at creation; there is no NSView-style setLayer:).
+    CGFloat scale = 1.0;
+    if (window->flags & SDL_WINDOW_HIGH_PIXEL_DENSITY) {
+        UIScreen *screen = parentView.window.screen;
+#ifndef SDL_PLATFORM_VISIONOS
+        scale = screen ? screen.nativeScale : [UIScreen mainScreen].nativeScale;
+#else
+        scale = 2.0;
+#endif
+    }
+    view = [[SDL_uikitmetalview alloc] initWithFrame:frame scale:scale];
+#else
+    view = [[SDL_uikitview alloc] initWithFrame:frame];
+#endif
+    // setSDLWindow registers the view in data.views; the viewcontroller /
+    // uiwindow re-rooting inside it is a no-op here (both are nil).
+    [view setSDLWindow:window];
+    [parentView addSubview:view];
+
+    data.sdlContentView = view;
+    window->flags |= SDL_WINDOW_EXTERNAL;
+
+    SDL_PropertiesID props = SDL_GetWindowProperties(window);
+    SDL_SetPointerProperty(props, SDL_PROP_WINDOW_UIKIT_CONTENTVIEW_POINTER, (__bridge void *)view);
+    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_UIKIT_METAL_VIEW_TAG_NUMBER, SDL_METALVIEW_TAG);
+
+    return true;
+}
+
 bool UIKit_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_PropertiesID create_props)
 {
     @autoreleasepool {
@@ -133,9 +182,17 @@ bool UIKit_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Properti
         SDL_UIKitDisplayData *data = (__bridge SDL_UIKitDisplayData *)display->internal;
         SDL_Window *other;
 
+        // Parent-view embedding mode (plugin editors): no UIWindow, no
+        // one-window-per-display limit — hosts can open several editors.
+        UIView *parentView = (__bridge UIView *)SDL_GetPointerProperty(create_props, SDL_PROP_WINDOW_CREATE_UIKIT_PARENT_VIEW_POINTER, NULL);
+        if (parentView) {
+            return SetupWindowDataEmbedded(_this, window, parentView);
+        }
+
         // We currently only handle a single window per display on iOS
+        // (embedded/external windows don't count against the limit)
         for (other = _this->windows; other; other = other->next) {
-            if (other != window && SDL_GetVideoDisplayForWindow(other) == display) {
+            if (other != window && !(other->flags & SDL_WINDOW_EXTERNAL) && SDL_GetVideoDisplayForWindow(other) == display) {
                 return SDL_SetError("Only one window allowed per display.");
             }
         }
@@ -236,6 +293,7 @@ void UIKit_ShowWindow(SDL_VideoDevice *_this, SDL_Window *window)
 {
     @autoreleasepool {
         SDL_UIKitWindowData *data = (__bridge SDL_UIKitWindowData *)window->internal;
+        data.sdlContentView.hidden = NO; // embedded mode (no-op otherwise)
         [data.uiwindow makeKeyAndVisible];
 
         // Make this window the current mouse focus for touch input
@@ -255,6 +313,7 @@ void UIKit_HideWindow(SDL_VideoDevice *_this, SDL_Window *window)
 {
     @autoreleasepool {
         SDL_UIKitWindowData *data = (__bridge SDL_UIKitWindowData *)window->internal;
+        data.sdlContentView.hidden = YES; // embedded mode (no-op otherwise)
         data.uiwindow.hidden = YES;
     }
 }
@@ -367,14 +426,15 @@ void UIKit_GetWindowSizeInPixels(SDL_VideoDevice *_this, SDL_Window *window, int
 {
     @autoreleasepool {
         SDL_UIKitWindowData *windata = (__bridge SDL_UIKitWindowData *)window->internal;
-        UIView *view = windata.viewcontroller.view;
+        UIView *view = windata.sdlContentView ? windata.sdlContentView : windata.viewcontroller.view;
         CGSize size = view.bounds.size;
         CGFloat scale = 1.0;
 
 
         if (window->flags & SDL_WINDOW_HIGH_PIXEL_DENSITY) {
 #ifndef SDL_PLATFORM_VISIONOS
-            scale = windata.uiwindow.screen.nativeScale;
+            UIScreen *screen = windata.uiwindow ? windata.uiwindow.screen : view.window.screen;
+            scale = screen ? screen.nativeScale : [UIScreen mainScreen].nativeScale;
 #else
             scale = 2.0;
 #endif

@@ -52,6 +52,10 @@ extern NSUInteger UIKit_GetSupportedOrientations(SDL_Window *window);
 // Array of SDL_uikitviews owned by this window.
 @property(nonatomic, copy) NSMutableArray *views;
 
+// Embedded (parent-view) mode: the SDL view added to the host-provided parent
+// UIView. nil for normal UIWindow-owned windows (uiwindow is nil when set).
+@property(nonatomic, strong) SDL_uikitview *sdlContentView;
+
 @end
 
 #endif // SDL_uikitwindow_h_
